@@ -1,0 +1,63 @@
+The sample program is bigast() which is what I am currently using to
+understand the focal plane geometry of Pan-STARRS PS1.  At least in
+this case, it is showing nice patterns at the 0.1% level of accuracy,
+and I doubt that these would be obvious if something was really hosed.
+
+On a 64-bit machine, all I need to do is type "make all".  You can
+tell from the makefile that I presume access to the following packages:
+    SLALIB
+    CFITSIO
+    HEALPIX
+    SM (supermongo)
+    X11
+    (the lutils is not needed)
+    MySQL
+The only known issue for 32-bit machines is that I use "long" to be
+a 64-bit integer, and the only places this really makes a difference
+is that I store starIDs in MySQL as BIGINTs, and when I need to sort
+pairs of 32-bit integers.
+
+Reading somebody else's code is really miserable, so here are a few
+pointers into bigast.c
+
+   a) keyinit.c and getcamera.c are one-time initializations of
+      useful things.  getcamera.c calls various camera models
+      depending on what I want, and lsstcamera.c is the one of
+      interest for this group.  So far as I know, lsstcamera.c
+      implements Chuck's latest version of reality.  If not, it
+      ought to be reasonably close.
+
+   b) I need any observation to set the boresight and the epoch,
+      and following this I call SLALIB initialization.  Of most
+      relevance is slalsst.c which calls out the nominals for
+      Cerro Pachon and sets up the various constants that SLALIB uses.
+
+   c) I load the reference catalog from MySQL.  Since this is for
+      Pan-STARRS, I load DVO's version of reality which does not
+      (yet) have proper motions or parallaxes.
+
+   d) I load the observations from MySQL.  Once I make sure that there is
+      a reference star for this observation, I save the (RA,Dec,CCD,Col,Row).
+
+   e) With all in place, I can compute my predicted positions on the
+      focal plane.  The critical lines are
+
+        for (i=0; i<ncat; i++) {
+                toobs(cra[i],cdec[i],pmra,pmdec,plx,rv, &xi[i],&eta[i],&k,&s);
+                dorot(&xi[i],&eta[i],&c);
+                j=docamera(xi[i],eta[i],&raft,&cccd[i],&ccol[i],&crow[i],&k,&c);         
+                if (j >= 0)
+                        m++;
+        }
+        printf("Found %8d stars on camera\n", m);
+
+    f) toobs.c does the sky to focal plane calculation, and its inverse
+       is contained in toradec.c.  This is how SLALIB does the calculation,
+       and therefore this is how I think that it ought to be done.
+
+    g) dorot.c handles the camera rotation, and assumes that the camera
+       rotates around the optical axis.  Not a good assumption, but
+       then again this is Chuck's problem, not mine.
+
+    h) docamera.c does the focal plane to silicon calculation, and if
+       the star falls on silicon it gets counted.
